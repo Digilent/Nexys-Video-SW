@@ -13,6 +13,9 @@ set arch "32-bit"
 set os "standalone"
 set proc "microblaze_0"
 
+# Destination platform needs to be made active first
+platform active "design_1_wrapper"
+
 domain create -name $domain_name -proc $proc -arch $arch -os $os
 
 # Customize BSP, this replaces *.mss file
@@ -33,3 +36,4 @@ bsp config assembler "mb-as"
 bsp config compiler "mb-gcc"
 bsp config compiler_flags "-O2 -c"
 bsp config extra_compiler_flags "-g -ffunction-sections -fdata-sections -Wall -Wextra"
+bsp config xmdstub_peripheral "none"
