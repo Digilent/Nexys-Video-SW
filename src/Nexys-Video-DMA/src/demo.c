@@ -158,7 +158,8 @@ static XAxiDma sAxiDma;		/* Instance of the XAxiDma */
 static XIntc sIntc;
 static XGpio sUserIO;
 
-
+// This variable holds the demo related settings
+volatile sDemo_t Demo;
 //
 // Interrupt vector table
 const ivt_t ivt[] = {
