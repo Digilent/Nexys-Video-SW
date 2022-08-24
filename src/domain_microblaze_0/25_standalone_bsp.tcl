@@ -9,14 +9,20 @@ puts "INFO: Running $script"
 set domain_name [file tail $script_dir]
 
 # Modify these for custom domain/BSP settings
-set arch "32-bit"
+
 set os "standalone"
 set proc "microblaze_0"
+set keep_boot_domain "0"
 
 # Destination platform needs to be made active first
 platform active "design_1_wrapper"
 
-domain create -name $domain_name -proc $proc -arch $arch -os $os
+domain create -name $domain_name -proc $proc -os $os
+
+if {$keep_boot_domain == 1} {
+	platform config -create-boot-bsp
+	platform write
+}
 
 # Customize BSP, this replaces *.mss file
 bsp config clocking "false"
@@ -35,5 +41,6 @@ bsp config archiver "mb-ar"
 bsp config assembler "mb-as"
 bsp config compiler "mb-gcc"
 bsp config compiler_flags "-O2 -c"
+bsp config dependency_flags "-MMD -MP"
 bsp config extra_compiler_flags "-g -ffunction-sections -fdata-sections -Wall -Wextra"
 bsp config xmdstub_peripheral "none"
