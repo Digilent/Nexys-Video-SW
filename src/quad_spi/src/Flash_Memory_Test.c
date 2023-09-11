@@ -1,39 +1,25 @@
-/******************************************************************************
-* Copyright (C) 2011 - 2023 Xilinx, Inc.  All rights reserved.
-* Copyright (c) 2022 - 2023 Advanced Micro Devices, Inc. All Rights Reserved.
-* SPDX-License-Identifier: MIT
-******************************************************************************/
-
-/*****************************************************************************/
-/**
-* @file xspi_winbond_flash_quad_example.c
-*
-* This file contains a design example using the SPI driver (XSpi) and axi_qspi
-* device with a Winbond quad serial flash device in the interrupt mode.
-* This example erases a Sector, writes to a Page within the Sector, reads back
-* from that Page and compares the data.
-*
-* This example  has been tested on Nexys Video(XC7A200T-1SBG484C)
-* The bytes per page (PAGE_SIZE) is 256 for this example.
-*
-* @note
-*
-* None.
-*
-* <pre>
-* MODIFICATION HISTORY:
-*
-* Ver   Who  Date     Changes
-* ----- ---- -------- -----------------------------------------------
-* 1.00a sdm  04/01/11 First release
-* 4.2   ms   01/23/17 Added xil_printf statement in main function to
-*                     ensure that "Successfully ran" and "Failed" strings
-*                     are available in all examples. This is a fix for
-*                     CR-965028.
-*       ms   04/05/17 Modified Comment lines to follow doxygen rules.
-* </pre>
-*
-******************************************************************************/
+/************************************************************************/
+/*																		*/
+/*	Flash_Memory_Test.c	--	Nexys Video QSPI demonstration 				*/
+/*																		*/
+/************************************************************************/
+/*	Author: Mihai R. Oprea												*/
+/*	Copyright 2023, Digilent Inc.										*/
+/************************************************************************/
+/*  Module Description: 												*/
+/*																		*/
+/*		This file contains code for running a demonstration of the		*/
+/*		Quad SPI capabilities of the Nexys Video. 						*/
+/*      It is a good example of how to properly use the AXI Quad SPI 	*/
+/*      controller and its drivers.									    */
+/*																		*/
+/*																		*/
+/************************************************************************/
+/*  Revision History:													*/
+/* 																		*/
+/*		august 2023 (MihaiR): Created									*/
+/*																		*/
+/************************************************************************/
 
 /***************************** Include Files *********************************/
 
