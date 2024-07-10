@@ -70,7 +70,7 @@ char fRefresh; //flag used to trigger a refresh of the Menu on video detect
  * Framebuffers for video data
  */
 
-u8 frameBuf[DISPLAY_NUM_FRAMES][DEMO_MAX_FRAME] __attribute__((aligned(0x20)));
+u8 frameBuf[DISPLAY_NUM_FRAMES][DEMO_MAX_FRAME] __attribute__((aligned(128)));
 u8 *pFrames[DISPLAY_NUM_FRAMES]; //array of pointers to the frame buffers
 
 /*
