@@ -56,7 +56,7 @@
 
 XStatus fnInitInterruptController(INTC *psIntc)
 {
-#ifdef XPAR_INTC_0_DEVICE_ID
+#ifdef XPAR_XINTC_NUM_INSTANCES
 
 	// Init driver instance
 	RETURN_ON_FAILURE(XIntc_Initialize(psIntc, INTC_DEVICE_ID));
@@ -104,7 +104,7 @@ void fnEnableInterrupts(INTC *psIntc, const ivt_t *prgsIvt, unsigned int csIVect
 	/* Hook up interrupt service routines from IVT */
 	for (isIVector = 0; isIVector < csIVectors; isIVector++)
 	{
-#ifdef XPAR_INTC_0_DEVICE_ID
+#ifdef XPAR_XINTC_NUM_INSTANCES
 		XIntc_Connect(psIntc, prgsIvt[isIVector].id, prgsIvt[isIVector].handler, prgsIvt[isIVector].pvCallbackRef);
 
 		/* Enable the interrupt vector at the interrupt controller */

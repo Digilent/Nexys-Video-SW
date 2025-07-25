@@ -423,7 +423,7 @@ void GpioIsr(void *InstancePtr)
 		XVtc_IntrEnable(&(videoPtr->vtc), 0x100);
 		XVtc_EnableDetector(&(videoPtr->vtc));
 
-#ifdef XPAR_INTC_0_DEVICE_ID
+#ifdef XPAR_XINTC_NUM_INSTANCES
 		XIntc_Enable(videoPtr->intc, videoPtr->vtcIrptId);
 #else
 		XScuGic_Enable(videoPtr->intc, videoPtr->vtcIrptId);
@@ -439,7 +439,7 @@ void GpioIsr(void *InstancePtr)
 		 * stable then the processor will throw a data abort exception. This is also why we
 		 * are disabling the interrupt in the first place, because VtcIsr accesses VTC registers.
 		 */
-#ifdef XPAR_INTC_0_DEVICE_ID
+#ifdef XPAR_XINTC_NUM_INSTANCES
 		XIntc_Disable(videoPtr->intc, videoPtr->vtcIrptId);
 #else
 		XScuGic_Disable(videoPtr->intc, videoPtr->vtcIrptId);

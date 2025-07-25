@@ -61,14 +61,14 @@
  * TODO: check if there is a better preprocessor check to determine
  *       if this is a microblaze or zynq system.
  */
-#ifdef XPAR_INTC_0_DEVICE_ID
+#ifdef XPAR_XINTC_NUM_INSTANCES
  #include "xintc.h"
 #else
  #include "xscugic.h"
 #endif
 
-#ifdef XPAR_INTC_0_DEVICE_ID
- #define INTC_DEVICE_ID	XPAR_INTC_0_DEVICE_ID
+#ifdef XPAR_XINTC_NUM_INSTANCES
+ #define INTC_DEVICE_ID	XPAR_XINTC_0_BASEADDR
  #define INTC		XIntc
  #define INTC_HANDLER	XIntc_InterruptHandler
 #else
