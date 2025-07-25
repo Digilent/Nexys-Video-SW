@@ -5,6 +5,9 @@
 		"\"__clang__\""
 	],
 	"USER_INCLUDE_DIRECTORIES" : [],
+	"USER_COMPILE_SOURCES" : [
+		"\"platform.c\""
+	],
 	"USER_COMPILE_WARNINGS_ALL" : [
 		"-Wall"
 	],
@@ -37,5 +40,5 @@
 		"\"${CMAKE_SOURCE_DIR}/lscript.ld\""
 	],
 	"USER_LINK_OTHER_FLAGS" : [],
-	"Nexys-Video-HDMI" : "src\\hdmi_wrapper\\hdmi_wrapper.xsa"
+	"Nexys-Video-HDMI" : "src\\hdmi_wrappe\\hdmi_wrappe.xsa"
 }
