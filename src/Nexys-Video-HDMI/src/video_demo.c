@@ -40,6 +40,7 @@
 #include "xil_cache.h"
 #include "xparameters.h"
 #include "sleep.h"
+#include "xinterrupt_wrap.h"
 /*
  * XPAR redefines
  */
@@ -65,6 +66,8 @@ XAxiVdma vdma;
 VideoCapture videoCapt;
 INTC intc;
 char fRefresh; //flag used to trigger a refresh of the Menu on video detect
+volatile u32 locked;
+volatile u32 gpioIntFiredUp;
 
 /*
  * Framebuffers for video data
@@ -72,14 +75,6 @@ char fRefresh; //flag used to trigger a refresh of the Menu on video detect
 
 u8 frameBuf[DISPLAY_NUM_FRAMES][DEMO_MAX_FRAME] __attribute__((aligned(128)));
 u8 *pFrames[DISPLAY_NUM_FRAMES]; //array of pointers to the frame buffers
-
-/*
- * Interrupt vector table
- */
-const ivt_t ivt[] = {
-	videoGpioIvt(VID_GPIO_IRPT_ID, &videoCapt),
-	videoVtcIvt(VID_VTC_IRPT_ID, &(videoCapt.vtc))
-};
 
 /* ------------------------------------------------------------ */
 /*				Procedure Definitions							*/
@@ -152,7 +147,6 @@ void DemoInitialize()
 		xil_printf("Error initializing interrupts");
 		return;
 	}
-	fnEnableInterrupts(&intc, &ivt[0], sizeof(ivt)/sizeof(ivt[0]));
 
 	/*
 	 * Initialize the Video Capture device
@@ -178,100 +172,156 @@ void DemoRun()
 {
 	int nextFrame = 0;
 	char userInput = 0;
-	u32 locked;
 	XGpio *GpioPtr = &videoCapt.gpio;
+	int Status;
+	XVtc_Config *vtcConfig;
 
 	/* Flush UART FIFO */
 	while (!XUartLite_IsReceiveEmpty(UART_BASEADDR))
 	{
 		XUartLite_ReadReg(UART_BASEADDR, XUL_RX_FIFO_OFFSET);
 	}
+
+	fRefresh = 0;
+	DemoPrintMenu();
+
 	while (userInput != 'q')
 	{
-		fRefresh = 0;
-		DemoPrintMenu();
+		if (gpioIntFiredUp) {
+			gpioIntFiredUp = 0;
 
-		/* Wait for data on UART */
-		while (XUartLite_IsReceiveEmpty(UART_BASEADDR) && !fRefresh)
-		{}
+			if (locked) {
+				vtcConfig = XVtc_LookupConfig((&videoCapt)->vtcId);
+				if (NULL == vtcConfig)
+					return;
 
-		/* Store the first character in the UART receive FIFO and echo it */
-		if (!XUartLite_IsReceiveEmpty(UART_BASEADDR))
-		{
-			userInput = XUartLite_ReadReg(UART_BASEADDR, XUL_RX_FIFO_OFFSET);
-			xil_printf("%c", userInput);
-		}
-		else  //Refresh triggered by video detect interrupt
-		{
-			userInput = 'r';
-		}
+				Status = XVtc_CfgInitialize(&((&videoCapt)->vtc), vtcConfig, vtcConfig->BaseAddress);
+				if (Status != (XST_SUCCESS))
+					return;
 
-		switch (userInput)
-		{
-		case '1':
-			DemoChangeRes();
-			break;
-		case '2':
-			nextFrame = dispCtrl.curFrame + 1;
-			if (nextFrame >= DISPLAY_NUM_FRAMES)
-			{
-				nextFrame = 0;
+				XVtc_SelfTest(&((&videoCapt)->vtc));
+
+				XVtc_RegUpdateEnable(&((&videoCapt)->vtc));
+				Status = XSetupInterruptSystem((&videoCapt), &VtcIsr,
+								vtcConfig->IntrId,
+								vtcConfig->IntrParent,
+								XINTERRUPT_DEFAULT_PRIORITY);
+				XVtc_IntrEnable(&((&videoCapt)->vtc), 0x100);
+				XVtc_EnableDetector(&((&videoCapt)->vtc));
+
+		#ifdef XPAR_XINTC_NUM_INSTANCES
+				XIntc_Enable((&videoCapt)->intc, (&videoCapt)->vtcIrptId);
+		#else
+				XScuGic_Enable((&videoCapt)->intc, (&videoCapt)->vtcIrptId);
+		#endif
 			}
-			DisplayChangeFrame(&dispCtrl, nextFrame);
-			break;
-		case '3':
-			DemoPrintTest(pFrames[dispCtrl.curFrame], dispCtrl.vMode.width, dispCtrl.vMode.height, DEMO_STRIDE, DEMO_PATTERN_0);
-			break;
-		case '4':
-			DemoPrintTest(pFrames[dispCtrl.curFrame], dispCtrl.vMode.width, dispCtrl.vMode.height, DEMO_STRIDE, DEMO_PATTERN_1);
-			break;
-		case '5':
-			if (videoCapt.state == VIDEO_STREAMING)
-				VideoStop(&videoCapt);
 			else
-				VideoStart(&videoCapt);
-			break;
-		case '6':
-			nextFrame = videoCapt.curFrame + 1;
-			if (nextFrame >= DISPLAY_NUM_FRAMES)
 			{
-				nextFrame = 0;
+				VideoStop((&videoCapt));
+				/*
+				* Note the VTC interrupt has to be disabled at the interrupt controller, because the
+				* VTC cannot be accessed here since we don't know if the clock is still
+				* stable. If you try to access any VTC registers when the clock is not
+				* stable then the processor will throw a data abort exception. This is also why we
+				* are disabling the interrupt in the first place, because VtcIsr accesses VTC registers.
+				*/
+		#ifdef XPAR_XINTC_NUM_INSTANCES
+				XIntc_Disable((&videoCapt)->intc, (&videoCapt)->vtcIrptId);
+		#else
+				XScuGic_Disable((&videoCapt)->intc, (&videoCapt)->vtcIrptId);
+		#endif
+				if ((&videoCapt)->callBack != NULL && (&videoCapt)->state != VIDEO_DISCONNECTED)
+					(&videoCapt)->callBack((&videoCapt)->callBackRef, (void *) (&videoCapt));
+				(&videoCapt)->state = VIDEO_DISCONNECTED;
 			}
-			VideoChangeFrame(&videoCapt, nextFrame);
-			break;
-		case '7':
-			nextFrame = videoCapt.curFrame + 1;
-			if (nextFrame >= DISPLAY_NUM_FRAMES)
-			{
-				nextFrame = 0;
-			}
-			VideoStop(&videoCapt);
-			DemoInvertFrame(pFrames[videoCapt.curFrame], pFrames[nextFrame], videoCapt.timing.HActiveVideo, videoCapt.timing.VActiveVideo, DEMO_STRIDE);
-			VideoStart(&videoCapt);
-			DisplayChangeFrame(&dispCtrl, nextFrame);
-			break;
-		case '8':
-			nextFrame = videoCapt.curFrame + 1;
-			if (nextFrame >= DISPLAY_NUM_FRAMES)
-			{
-				nextFrame = 0;
-			}
-			VideoStop(&videoCapt);
-			DemoScaleFrame(pFrames[videoCapt.curFrame], pFrames[nextFrame], videoCapt.timing.HActiveVideo, videoCapt.timing.VActiveVideo, dispCtrl.vMode.width, dispCtrl.vMode.height, DEMO_STRIDE);
-			VideoStart(&videoCapt);
-			DisplayChangeFrame(&dispCtrl, nextFrame);
-			break;
-		case 'q':
-			break;
-		case 'r':
-			locked = XGpio_DiscreteRead(GpioPtr, 2);
-			xil_printf("%d", locked);
-			break;
-		default :
-			xil_printf("\n\rInvalid Selection");
-			usleep(50000);
 		}
-	}
+
+		/* Check for data on UART */
+		if (!XUartLite_IsReceiveEmpty(UART_BASEADDR) || fRefresh) {
+
+			/* Store the first character in the UART receive FIFO and echo it */
+			if (!XUartLite_IsReceiveEmpty(UART_BASEADDR))
+			{
+				userInput = XUartLite_ReadReg(UART_BASEADDR, XUL_RX_FIFO_OFFSET);
+				xil_printf("%c", userInput);
+			}
+			else  //Refresh triggered by video detect interrupt
+			{
+				userInput = 'r';
+				fRefresh = 0;
+            DemoPrintMenu();
+			}
+
+			switch (userInput)
+			{
+			case '1':
+				DemoChangeRes();
+				break;
+			case '2':
+				nextFrame = dispCtrl.curFrame + 1;
+				if (nextFrame >= DISPLAY_NUM_FRAMES)
+				{
+				nextFrame = 0;
+				}
+				DisplayChangeFrame(&dispCtrl, nextFrame);
+				break;
+			case '3':
+				DemoPrintTest(pFrames[dispCtrl.curFrame], dispCtrl.vMode.width, dispCtrl.vMode.height, DEMO_STRIDE, DEMO_PATTERN_0);
+				break;
+			case '4':
+				DemoPrintTest(pFrames[dispCtrl.curFrame], dispCtrl.vMode.width, dispCtrl.vMode.height, DEMO_STRIDE, DEMO_PATTERN_1);
+				break;
+			case '5':
+				if (videoCapt.state == VIDEO_STREAMING)
+				VideoStop(&videoCapt);
+				else
+				VideoStart(&videoCapt);
+				break;
+			case '6':
+				nextFrame = videoCapt.curFrame + 1;
+				if (nextFrame >= DISPLAY_NUM_FRAMES)
+				{
+				nextFrame = 0;
+				}
+				VideoChangeFrame(&videoCapt, nextFrame);
+				break;
+			case '7':
+				nextFrame = videoCapt.curFrame + 1;
+				if (nextFrame >= DISPLAY_NUM_FRAMES)
+				{
+				nextFrame = 0;
+				}
+				VideoStop(&videoCapt);
+				DemoInvertFrame(pFrames[videoCapt.curFrame], pFrames[nextFrame], videoCapt.timing.HActiveVideo, videoCapt.timing.VActiveVideo, DEMO_STRIDE);
+				VideoStart(&videoCapt);
+				DisplayChangeFrame(&dispCtrl, nextFrame);
+				break;
+			case '8':
+				nextFrame = videoCapt.curFrame + 1;
+				if (nextFrame >= DISPLAY_NUM_FRAMES)
+				{
+				nextFrame = 0;
+				}
+				VideoStop(&videoCapt);
+				DemoScaleFrame(pFrames[videoCapt.curFrame], pFrames[nextFrame], videoCapt.timing.HActiveVideo, videoCapt.timing.VActiveVideo, dispCtrl.vMode.width, dispCtrl.vMode.height, DEMO_STRIDE);
+				VideoStart(&videoCapt);
+				DisplayChangeFrame(&dispCtrl, nextFrame);
+				break;
+			case 'q':
+				break;
+			case 'r':
+				locked = XGpio_DiscreteRead(GpioPtr, 2);
+				xil_printf("%d", locked);
+				break;
+			default :
+				xil_printf("\n\rInvalid Selection");
+				usleep(50000);
+			}
+         
+         DemoPrintMenu();
+		}
+      
+   }
 
 	return;
 }
@@ -412,10 +462,11 @@ void DemoInvertFrame(u8 *srcFrame, u8 *destFrame, u32 width, u32 height, u32 str
 		lineStart += stride;
 	}
 	/*
-	 * Flush the framebuffer memory range to ensure changes are written to the
+	 * Flush the entire data cache to ensure framebuffer changes are written to the
 	 * actual memory, and therefore accessible by the VDMA.
+	 * For some reason, flushing just part of the data cache does not work well in 2025.1.
 	 */
-	Xil_DCacheFlushRange((unsigned int) destFrame, DEMO_MAX_FRAME);
+	Xil_DCacheFlush();
 }
 
 
@@ -482,11 +533,12 @@ void DemoScaleFrame(u8 *srcFrame, u8 *destFrame, u32 srcWidth, u32 srcHeight, u3
 		ycoSrc += yInc;
 	}
 
-	/*
-	 * Flush the framebuffer memory range to ensure changes are written to the
-	 * actual memory, and therefore accessible by the VDMA.
-	 */
-	Xil_DCacheFlushRange((unsigned int) destFrame, DEMO_MAX_FRAME);
+		/*
+		 * Flush the entire data cache to ensure framebuffer changes are written to the
+		 * actual memory, and therefore accessible by the VDMA.
+		 * For some reason, flushing just part of the data cache does not work well in 2025.1.
+		 */
+   Xil_DCacheFlush();
 
 	return;
 }
@@ -573,10 +625,11 @@ void DemoPrintTest(u8 *frame, u32 width, u32 height, u32 stride, int pattern)
 			}
 		}
 		/*
-		 * Flush the framebuffer memory range to ensure changes are written to the
+		 * Flush the entire data cache to ensure framebuffer changes are written to the
 		 * actual memory, and therefore accessible by the VDMA.
+		 * For some reason, flushing just part of the data cache does not work well in 2025.1.
 		 */
-		Xil_DCacheFlushRange((unsigned int) frame, DEMO_MAX_FRAME);
+      Xil_DCacheFlush();
 		break;
 	case DEMO_PATTERN_1:
 
@@ -637,10 +690,11 @@ void DemoPrintTest(u8 *frame, u32 width, u32 height, u32 stride, int pattern)
 			}
 		}
 		/*
-		 * Flush the framebuffer memory range to ensure changes are written to the
+		 * Flush the entire data cache to ensure framebuffer changes are written to the
 		 * actual memory, and therefore accessible by the VDMA.
+		 * For some reason, flushing just part of the data cache does not work well in 2025.1.
 		 */
-		Xil_DCacheFlushRange((unsigned int) frame, DEMO_MAX_FRAME);
+		Xil_DCacheFlush();
 		break;
 	default :
 		xil_printf("Error: invalid pattern passed to DemoPrintTest");

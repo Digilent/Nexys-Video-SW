@@ -104,6 +104,7 @@
 
 #include "video_capture.h"
 #include "xdebug.h"
+#include "xinterrupt_wrap.h"
 
 /* ------------------------------------------------------------ */
 /*				Procedure Definitions							*/
@@ -244,7 +245,7 @@ int VideoStart(VideoCapture *videoPtr)
 **		can all be called at will.
 **
 */
-int VideoInitialize(VideoCapture *videoPtr, INTC *intCtrl, XAxiVdma *vdma, u16 gpioId, u16 vtcId, u32 vtcIrptId, u8 *framePtr[VIDEO_NUM_FRAMES], u32 stride, u32 startOnDet)
+int VideoInitialize(VideoCapture *videoPtr, INTC *intCtrl, XAxiVdma *vdma, u32 gpioId, u32 vtcId, u32 vtcIrptId, u8 *framePtr[VIDEO_NUM_FRAMES], u32 stride, u32 startOnDet)
 {
 	int Status;
 	int i;
@@ -294,13 +295,17 @@ int VideoInitialize(VideoCapture *videoPtr, INTC *intCtrl, XAxiVdma *vdma, u16 g
 	 */
 	XGpio_SelfTest(&videoPtr->gpio);
 
+	Status = XSetupInterruptSystem(videoPtr, &GpioIsr,
+					XPAR_AXI_GPIO_VIDEO_INTERRUPTS,
+					XPAR_AXI_GPIO_VIDEO_INTERRUPT_PARENT,
+					XINTERRUPT_DEFAULT_PRIORITY);
+
 	/*
 	 * Setup direction registers, and ensure HPD is low
 	 */
 	XGpio_DiscreteWrite(&videoPtr->gpio, 1, 0);
 	XGpio_SetDataDirection(&videoPtr->gpio, 1, 0); //Set HPD channel as output
 	XGpio_SetDataDirection(&videoPtr->gpio, 2, 1); //Set Locked channel as input
-
 
 	/*
 	 * Enable the GPIO channel interrupts so that push button can be
@@ -397,57 +402,14 @@ void GpioIsr(void *InstancePtr)
 {
 	VideoCapture *videoPtr = (VideoCapture *)InstancePtr;
 	XGpio *GpioPtr = &videoPtr->gpio;
-	u32 locked;
-	int Status;
-	XVtc_Config *vtcConfig;
 
 	XGpio_InterruptClear(GpioPtr, XGPIO_IR_CH2_MASK);
 
 	locked = XGpio_DiscreteRead(GpioPtr, 2);
+	gpioIntFiredUp = 1;
 
 	xil_printf("~");
-	if (locked)
-	{
-		vtcConfig = XVtc_LookupConfig(videoPtr->vtcId);
-		if (NULL == vtcConfig)
-			return;
-
-		Status = XVtc_CfgInitialize(&(videoPtr->vtc), vtcConfig, vtcConfig->BaseAddress);
-		if (Status != (XST_SUCCESS))
-			return;
-
-		XVtc_SelfTest(&(videoPtr->vtc));
-
-		XVtc_RegUpdateEnable(&(videoPtr->vtc));
-		XVtc_SetCallBack(&(videoPtr->vtc), XVTC_HANDLER_LOCK, VtcIsr, videoPtr);
-		XVtc_IntrEnable(&(videoPtr->vtc), 0x100);
-		XVtc_EnableDetector(&(videoPtr->vtc));
-
-#ifdef XPAR_XINTC_NUM_INSTANCES
-		XIntc_Enable(videoPtr->intc, videoPtr->vtcIrptId);
-#else
-		XScuGic_Enable(videoPtr->intc, videoPtr->vtcIrptId);
-#endif
-	}
-	else
-	{
-		VideoStop(videoPtr);
-		/*
-		 * Note the VTC interrupt has to be disabled at the interrupt controller, because the
-		 * VTC cannot be accessed here since we don't know if the clock is still
-		 * stable. If you try to access any VTC registers when the clock is not
-		 * stable then the processor will throw a data abort exception. This is also why we
-		 * are disabling the interrupt in the first place, because VtcIsr accesses VTC registers.
-		 */
-#ifdef XPAR_XINTC_NUM_INSTANCES
-		XIntc_Disable(videoPtr->intc, videoPtr->vtcIrptId);
-#else
-		XScuGic_Disable(videoPtr->intc, videoPtr->vtcIrptId);
-#endif
-		if (videoPtr->callBack != NULL && videoPtr->state != VIDEO_DISCONNECTED)
-			videoPtr->callBack(videoPtr->callBackRef, (void *) videoPtr);
-		videoPtr->state = VIDEO_DISCONNECTED;
-	}
+	
 }
 
 void VtcIsr(void *InstancePtr, u32 pendingIrpt)
