@@ -40,5 +40,5 @@
 		"\"${CMAKE_SOURCE_DIR}/lscript.ld\""
 	],
 	"USER_LINK_OTHER_FLAGS" : [],
-	"Nexys-Video-HDMI" : "src\\hdmi_wrappe\\hdmi_wrappe.xsa"
+	"Nexys-Video-HDMI" : "src\\hdmi_wrapper\\hdmi_wrapper.xsa"
 }
