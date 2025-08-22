@@ -6,3 +6,5 @@
 
 #ignore Packages/ created by Vitis
 /Packages
+/.wsdata
+dfx_runtime.txt
